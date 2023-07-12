@@ -48,12 +48,14 @@ I have 2 ways of doing Certs (HTML-01 and DNS-01) in this script I lay the groun
 </ul>
 In general, most people use the HTTP-01 challenge because it's straightforward and can be easily automated with the Certbot tool, provided that port 80 is open to the internet. The DNS-01 challenge is the only method that can be used to issue wildcard certificates (*.yourdomain.com).
 </br>
-
+</br>
 Email for Certbot that will notify when the Cert is expiring. Doesn't have to be real, but recommend
 </br>
 <b>CERTMAIL=your @ email.com</b>
- 
+</br>
+
 ### DB STUFF
+
 This is the name of the database that will create for nextcloud
 </br>
 <b>DBNAME=piwigodb</b>
