@@ -58,17 +58,12 @@ echo "==========================================================================
 
 # Hello
 echo " Attempting to install Piwigo on RH 8 and Apache "
-echo " ================================================ "
+echo "================================================ "
 sleep 2
 
 ###############
 ## Variables ##
 ###############
-
-# You MUST set the Name here:
-# This is NOT the Server Name
-# This is the name that you will enter in the URL
-SERVERNAME=piwigo.Your.Domain
 
 # This is the name of the database that will get created for Piwigo
 DBNAME=piwigodb
@@ -76,13 +71,26 @@ DBNAME=piwigodb
 # This is the username that is needed for the Piwigo database. NOTE: This is not a Piwigo user account
 USER=piwigouser
 
-# Email for Piwigo Admin account
-# Doesn't have to be real, but recommended
-APPMAIL=your@email.com
+# You MUST set the Name here:
+# This is NOT the Server Name
+# This is the name that you will enter in the URL
+SERVERNAME=piwigo.Your.Domain
 
 # Email for CertBot 
 # Doesn't have to be real, but recommended
-CERTMAIL=your@email.com
+CERTMAIL=certadmin@email.com
+
+# Fail2Ban Settings
+# Ban duration in seconds-1 hour
+BANDURATION=3600
+
+# Fail2Ban Settings
+# Time window in seconds to search for failed login attempts-10 minutes
+FAILEDSEARCH=600
+
+# Fail2Ban Settings
+# Number of attempts to try - 5 times
+MAXATTEMPTS=5
 
 # Color Scheme Fun
 red=`tput setaf 1`
@@ -96,7 +104,6 @@ sleep 1 # We need to sleep 1 to change the password, otherwise we end up with th
 # This generates a random password for the nextcloud user account in mariadb. You can change it if you wish
 date +%s | sha256sum | base64 | head -c 16 >> /tmp/.APPPASSWORD
 sleep 1 # We need to sleep 1 to change the password, otherwise we end up with the same hash
-
 
 ##########################################################################
 ############## NO CHANGES FROM HERE DOWN SHOULD BE REQUIRED ##############
@@ -113,7 +120,7 @@ echo -e "${green}Firewall Reload${reset}"
 firewall-cmd --reload
 clear 
 
-# # Install Required Packages
+# Install Required Packages
 echo -e "${green}# Install Required Packages${reset}"
 dnf -y install httpd mariadb-server php php-common php-mysqlnd php-gd php-xml php-json php-fpm
 dnf update -y
@@ -132,17 +139,33 @@ dnf install -y https://dl.fedoraproject.org/pub/epel/epel-release-latest-8.noarc
 dnf install certbot python3-certbot-apache -y
 echo -e "${green}Done${reset}"
 
+# Generate self-signed certificate
+echo -e "${green}Generating Self-Signed Certificate${reset}"
+openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout /etc/pki/tls/private/apache-selfsigned.key -out /etc/pki/tls/certs/apache-selfsigned.crt -subj "/CN=$SERVERNAME"
+
 # Create a Genaric Virtual host
 echo -e "${green}Create a Genaric Virtual host${reset}"
 cat << EOF >> /etc/httpd/conf.d/piwigo.conf
 <VirtualHost *:80>
-  ServerAdmin admin@mydomainname.com  
-  DocumentRoot /var/www/html/piwigo
   ServerName $SERVERNAME
-  # ServerAlias www.your_domain
+  ServerAdmin $CERTMAIL
+  DocumentRoot /var/www/html/piwigo
   ErrorLog "/var/log/httpd/piwigo_error_log"
   CustomLog "/var/log/httpd/piwigo_access_log" combined
+  RewriteEngine on
+  RewriteCond %{SERVER_NAME} =$SERVERNAME
+  RewriteRule ^ https://%{SERVER_NAME}%{REQUEST_URI} [END,NE,R=permanent]
+</VirtualHost>
 
+<VirtualHost *:443>
+  ServerName $SERVERNAME
+  ServerAdmin $CERTMAIL
+  DocumentRoot /var/www/html/piwigo
+  ErrorLog "/var/log/httpd/piwigo_error_ssl.log"
+  CustomLog "/var/log/httpd/piwigo_access_ssl.log" combined
+  SSLEngine on
+  SSLCertificateFile "/etc/pki/tls/certs/apache-selfsigned.crt"
+  SSLCertificateKeyFile "/etc/pki/tls/private/apache-selfsigned.key"
   <directory /var/www/html/piwigo>
     Require all granted
     AllowOverride All
@@ -150,7 +173,6 @@ cat << EOF >> /etc/httpd/conf.d/piwigo.conf
     SetEnv HOME /var/www/html/piwigo
     SetEnv HTTP_HOME /var/www/html/piwigo
   </directory>
-
 </VirtualHost>
 EOF
 
@@ -178,7 +200,7 @@ mysql -u root < /tmp/setup.sql
 # Download and install Piwigo
 echo -e "${green}Download and install Piwigo${reset}"
 cd /var/www/html/
-wget wget https://piwigo.org/download/dlcounter.php?code=latest
+wget https://piwigo.org/download/dlcounter.php?code=latest
 mv dlcounter.php?code=latest piwigo.zip
 unzip piwigo.zip
 mv piwigo.* piwigo 
@@ -209,6 +231,9 @@ enabled = true
 port = http,https
 filter = piwigo
 logpath = /var/log/httpd/piwigoFailedLogins.log
+bantime = $BANDURATION
+findtime = $FAILEDSEARCH
+maxretry = $MAXATTEMPTS
 EOF
 
 echo -e "${green}Create Filter for Piwigo${reset}"
@@ -261,28 +286,16 @@ clear
 echo -e "${red}To Finish Install ${reset}"
 echo -e "${red}=====================${reset}"
 echo -e "${green}Open an internet browser${reset}"
-echo -e "${green}HTTP://<HOST-IP>${reset}"
+echo -e "${green}HTTPS://<HOST-IP>${reset}"
 echo ""
-echo -e "${green}DataBase Name: $DBNAME${reset}"
 echo -e "${green}DB User: $USER${reset}"
 echo -e "${green}Password:" $(cat /tmp/.APPPASSWORD) "${reset}"
-echo -e "${green}Admin Email: $APPMAIL${reset}"
+echo -e "${green}DataBase Name: $DBNAME${reset}"
 echo ""
+echo -e "${green}Fail to login log for plugin location: ${reset}"
+echo -e "${green}/var/log/httpd/piwigoFailedLogins.log ${reset}"
 echo ""
 echo -e "${red}Don't Forget to Clean the TMP${reset}"
 echo -e "${red}.APPPASSWORD${reset}"
 echo -e "${red}.MARIADBPASSWORD${reset}"
 echo -e "${red}setup.sql${reset}"
-
-
-# certbot --apache --agree-tos --redirect --uir --hsts --staple-ocsp --must-staple -d $SERVERNAME --email $CERTMAIL
-
-
-# Disable reading by anonymous users
-#$wgGroupPermissions['*']['read'] = false;
-
-
-
-
-
-
