@@ -164,8 +164,14 @@ cat << EOF >> /etc/httpd/conf.d/piwigo.conf
   ErrorLog "/var/log/httpd/piwigo_error_ssl.log"
   CustomLog "/var/log/httpd/piwigo_access_ssl.log" combined
   SSLEngine on
+  SSLProtocol all -SSLv3 -TLSv1 -TLSv1.1
+  SSLCipherSuite HIGH:!aNULL:!MD5
+  SSLHonorCipherOrder on
   SSLCertificateFile "/etc/pki/tls/certs/apache-selfsigned.crt"
   SSLCertificateKeyFile "/etc/pki/tls/private/apache-selfsigned.key"
+  Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+  Header set Content-Security-Policy "default-src 'self';"
+  Header always append X-Frame-Options SAMEORIGIN
   <directory /var/www/html/piwigo>
     Require all granted
     AllowOverride All
